@@ -17,10 +17,13 @@ const HEADERS = {
   'Content-Security-Policy': "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; media-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
 };
 
-http.createServer((req, res) => {
+const server = http.createServer((req, res) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405, { Allow: 'GET, HEAD' }); return res.end(); }
-  const p = new URL(req.url, 'http://x').pathname;
-  if (p === '/healthz') { res.writeHead(200, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' }); return res.end('ok'); }
+  // Plain string split: exact-match whitelist needs no URL normalisation, and new URL() throws on targets like `//[`.
+  const p = String(req.url || '').split('?')[0].split('#')[0];
+  if (p === '/healthz') { res.writeHead(200, Object.assign({}, HEADERS, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' })); return res.end('ok'); }
   if (p === '/' || p === '/index.html') { res.writeHead(200, HEADERS); return res.end(req.method === 'HEAD' ? undefined : INDEX); }
-  res.writeHead(404, { 'Content-Type': 'text/plain' }); res.end('not found');
-}).listen(PORT, () => console.log('Floppy Bird on http://localhost:' + PORT));
+  res.writeHead(404, Object.assign({}, HEADERS, { 'Content-Type': 'text/plain' })); res.end('not found');
+});
+if (require.main === module) server.listen(PORT, () => console.log('Floppy Bird on http://localhost:' + PORT));
+module.exports = server;

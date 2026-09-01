@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
 <title>Floppy Bird: Super Powers</title>
 <style>
   html,body{margin:0;height:100%;background:#0b1020;display:flex;align-items:center;justify-content:center;font-family:system-ui,-apple-system,sans-serif;color:#fff;overflow:hidden}
@@ -91,7 +92,17 @@ function powersFor(id) { return id >= 3 ? ['dash', 'ghost'] : id === 2 ? ['dash'
 const SAVE_KEY = 'floppy.save.v1';
 function blankSave() { return { stars: {}, endlessBest: 0, daily: {}, skin: 'classic' }; }
 let save = blankSave();
-try { save = Object.assign(blankSave(), JSON.parse(localStorage.getItem(SAVE_KEY) || '{}')); } catch (_) {}
+function sanitizeSave(raw) {
+  // Browser storage is the player's own, but a hand-edited or corrupted save must never crash the page.
+  const out = blankSave();
+  if (!raw || typeof raw !== 'object') return out;
+  if (raw.stars && typeof raw.stars === 'object') for (const L of LEVELS) { const v = Math.floor(+raw.stars[L.id]); if (v >= 1) out.stars[L.id] = Math.min(3, v); }
+  out.endlessBest = Math.max(0, Math.floor(+raw.endlessBest) || 0);
+  if (raw.daily && typeof raw.daily === 'object') for (const k of Object.keys(raw.daily).slice(-60)) { if (/^\d{4}-\d{2}-\d{2}$/.test(k)) { const v = Math.floor(+raw.daily[k]); if (v > 0) out.daily[k] = v; } }
+  if (SKINS.some(sk => sk.id === raw.skin)) out.skin = raw.skin;
+  return out;
+}
+try { save = sanitizeSave(JSON.parse(localStorage.getItem(SAVE_KEY) || '{}')); } catch (_) {}
 function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (_) {} }
 function totalStars() { return Object.values(save.stars).reduce((a, b) => a + b, 0); }
 function clearedCount() { let n = 0; for (const L of LEVELS) { if ((save.stars[L.id] || 0) > 0) n++; else break; } return n; }

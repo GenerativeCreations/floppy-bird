@@ -4,7 +4,8 @@
   "private": true,
   "description": "Floppy Bird: Super Powers — 14-level campaign, Endless and Daily modes, in one HTML file.",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node test.js"
   },
   "engines": {
     "node": ">=18"
