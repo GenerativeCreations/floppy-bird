@@ -40,6 +40,7 @@ const T = {
   pipeW: 72, birdX: 130, birdR: 16, hitR: 13,
   dash:  { mult: 2.6, dur: 1.4, cd: 5.0, scoreMult: 2 },   // J
   ghost: { dur: 2.2, cd: 7.0, grace: 0.6 },                 // K
+  smart: { dur: 3.0, cd: 12.0 },                            // J in Flamingo Lagoon: the flamingo dodges for you
 };
 
 // =====================================================================
@@ -57,9 +58,9 @@ const MECH = {
   phantom:   { name: 'Phantom pipes',  desc: 'Shimmering pipes are fake — fly through them' },
 };
 const LEVELS = [
-  { id: 1,  name: 'Nesting Grounds', scene: 'meadow',    sub: 'Learn to flop. Grab coins.',       goal: 10, speed: 150, gap: 190, spacing: 285, mech: [],                sky: ['#6fc6ff', '#c9ecff'] },
-  { id: 2,  name: 'Flamingo Lagoon', scene: 'lagoon',    sub: 'J unlocks the flamingo dash',       goal: 15, speed: 158, gap: 182, spacing: 275, mech: [],                sky: ['#ff9ec7', '#ffe3ef'] },
-  { id: 3,  name: 'Haunted Hollow', scene: 'haunted',     sub: 'K unlocks the ghost',               goal: 15, speed: 160, gap: 178, spacing: 300, mech: ['thick'],         sky: ['#4a3d7a', '#9c8fd0'] },
+  { id: 1,  name: 'Nesting Grounds', scene: 'meadow', sub: 'Learn to flop. Try J and K.',       goal: 10, speed: 150, gap: 190, spacing: 285, mech: [],                sky: ['#6fc6ff', '#c9ecff'] },
+  { id: 2,  name: 'Flamingo Lagoon', scene: 'lagoon', smart: true, sub: 'Smart flamingo: J dodges for you',       goal: 15, speed: 158, gap: 182, spacing: 275, mech: [],                sky: ['#ff9ec7', '#ffe3ef'] },
+  { id: 3,  name: 'Haunted Hollow', scene: 'haunted', sub: 'Ghosts love thick pipes',               goal: 15, speed: 160, gap: 178, spacing: 300, mech: ['thick'],         sky: ['#4a3d7a', '#9c8fd0'] },
   { id: 4,  name: 'Restless Reeds', scene: 'marsh',     sub: 'The gaps will not sit still',       goal: 20, speed: 165, gap: 176, spacing: 275, mech: ['moving'],        sky: ['#7bd4a8', '#e0fff0'] },
   { id: 5,  name: 'Windy Peaks', scene: 'peaks',        sub: 'Watch the gust warning',            goal: 20, speed: 165, gap: 176, spacing: 275, mech: ['wind'],          sky: ['#9fd3ff', '#e8f6ff'] },
   { id: 6,  name: 'Coin Canyon', scene: 'canyon',        sub: 'Greed is a strategy',               goal: 25, speed: 170, gap: 172, spacing: 270, mech: ['richcoins'],     sky: ['#f0b26b', '#ffe9c7'] },
@@ -84,7 +85,7 @@ const SKINS = [
 const STAR_MAX = LEVELS.length * 3;
 const ENDING_WARN = 0.4; // seconds before a power expires that the bar blinks + chirps
 const ENDLESS_UNLOCK = 3, DAILY_UNLOCK = 6; // cleared-level requirements
-function powersFor(id) { return id >= 3 ? ['dash', 'ghost'] : id === 2 ? ['dash'] : []; }
+function powersFor() { return ['dash', 'ghost']; }
 
 // =====================================================================
 // Save data
@@ -149,7 +150,7 @@ function resetRun() {
     t: 0, score: 0, coins: 0, coinsSeen: 0, usedPower: false, speedMult: 1, intensity: 0.45,
     bird: { y: H / 2, vy: 0, rot: 0, wing: 0 },
     pipes: [], coinEnts: [], hail: [], particles: [], popups: [],
-    dash: { active: 0, cd: 0 }, ghost: { active: 0, cd: 0, lingering: 0 },
+    dash: { active: 0, cd: 0, smart: false }, ghost: { active: 0, cd: 0, lingering: 0 },
     gust: { phase: 'idle', t: 0, fx: 0, fy: 0 }, gustNext: 3,
     hailTimer: 1.2, flipped: false, stage: -1, stars: 0, newBest: false,
     shake: 0, groundX: 0, cloudX: 0, hitFlash: 0, scroll: 0, flash: 0,
@@ -159,7 +160,7 @@ S = { screen: 'menu', menuIdx: 0, selIdx: 0, kind: 'campaign', levelIdx: 0, card
 resetRun();
 L = levelCfg(LEVELS[0]); // menu backdrop
 
-function levelCfg(lv) { return { id: lv.id, name: lv.name, scene: lv.scene, sub: lv.sub, goal: lv.goal, speed: lv.speed, gap: lv.gap, spacing: lv.spacing, mechs: new Set(lv.mech), powers: new Set(powersFor(lv.id)), sky: lv.sky.slice() }; }
+function levelCfg(lv) { return { id: lv.id, name: lv.name, scene: lv.scene, smart: !!lv.smart, sub: lv.sub, goal: lv.goal, speed: lv.speed, gap: lv.gap, spacing: lv.spacing, mechs: new Set(lv.mech), powers: new Set(powersFor(lv.id)), sky: lv.sky.slice() }; }
 function endlessStageCfg(stage, r) {
   const n = Math.min(4, 1 + Math.floor(stage / 3));
   const pool = ENDLESS_POOL.slice(), mechs = [];
@@ -230,17 +231,19 @@ function beginPlay() { S.screen = 'play'; S.bird.vy = T.flap; S.bird.wing = 1; S
 function flap() {
   if (S.screen === 'ready') return beginPlay();
   if (S.screen !== 'play') return;
+  if (S.dash.active > 0 && S.dash.smart) return; // the smart flamingo is driving
   const dir = S.flipped ? -1 : 1;
   S.bird.vy = (S.dash.active > 0 ? -300 : T.flap) * dir;
   S.bird.wing = 1; SFX.flap();
 }
-function dive() { if (S.screen === 'play' && S.dash.active > 0) S.bird.vy = 300 * (S.flipped ? -1 : 1); }
+function dive() { if (S.screen === 'play' && S.dash.active > 0 && !S.dash.smart) S.bird.vy = 300 * (S.flipped ? -1 : 1); }
 function useDash() {
   if (S.screen !== 'play' || !L.powers.has('dash')) return;
   if (S.dash.cd > 0) return SFX.nope();
   S.usedPower = true;
-  S.dash.active = T.dash.dur; S.dash.cd = T.dash.dur + T.dash.cd; S.bird.vy = 0; S.shake = 6;
-  puff(T.birdX, S.bird.y, '#ff6fa8', 18, 220, 0.6); popup('FLAMINGO!', '#ff8ac2'); SFX.dash();
+  const smart = !!L.smart, cfg = smart ? T.smart : T.dash;
+  S.dash.smart = smart; S.dash.active = cfg.dur; S.dash.cd = cfg.dur + cfg.cd; S.bird.vy = 0; S.shake = 6;
+  puff(T.birdX, S.bird.y, '#ff6fa8', 18, 220, 0.6); popup(smart ? 'SMART FLAMINGO!' : 'FLAMINGO!', '#ff8ac2'); SFX.dash();
 }
 function useGhost() {
   if (S.screen !== 'play' || !L.powers.has('ghost')) return;
@@ -366,7 +369,16 @@ function updatePlay(dt) {
   S.scroll += speed * dt;
 
   // bird physics
-  if (dashing) {
+  if (dashing && S.dash.smart) {
+    // Smart flamingo: steer toward the centre of the nearest gap ahead, sidestep hail
+    const next = S.pipes.find(p => !p.phantom && p.x + p.w > T.birdX - 10) || S.pipes[0];
+    let target = next ? next.gapY : H / 2;
+    for (const h of S.hail) if (h.x > T.birdX - 20 && h.x < T.birdX + 140 && Math.abs(h.y - target) < 60) target += h.y < target ? 55 : -55;
+    target = Math.max(T.birdR + 30, Math.min(GROUND_Y - T.hitR - 30, target));
+    b.vy = Math.max(-560, Math.min(560, (target - b.y) * 9)); b.y += b.vy * dt;
+    b.rot += (b.vy / 1400 * g - b.rot) * Math.min(1, 10 * dt);
+    if (Math.random() < dt * 60) S.particles.push({ x: T.birdX - 14, y: b.y + (Math.random() - .5) * 18, vx: -speed * 0.8, vy: 0, life: 0.35, max: 0.35, color: '#ffa3cf', r: 2 });
+  } else if (dashing) {
     b.vy += (0 - b.vy) * Math.min(1, 7 * dt); b.vy += windFy * 0.4 * dt; b.y += b.vy * dt;
     b.rot += (b.vy / 900 * g - b.rot) * Math.min(1, 10 * dt);
     if (Math.random() < dt * 60) S.particles.push({ x: T.birdX - 14, y: b.y + (Math.random() - .5) * 18, vx: -speed * 0.8, vy: 0, life: 0.35, max: 0.35, color: '#ffa3cf', r: 2 });
@@ -405,7 +417,7 @@ function updatePlay(dt) {
   for (const p of S.pipes) {
     if (!p.passed && p.x + p.w < T.birdX) {
       p.passed = true;
-      const pts = dashing ? T.dash.scoreMult : 1;
+      const pts = dashing && !S.dash.smart ? T.dash.scoreMult : 1;
       S.score += pts;
       popup('+' + pts, dashing ? '#ff8ac2' : '#fff', T.birdX + 30, b.y - 30, 0.7); SFX.score();
       if (L.goal && S.score >= L.goal) return levelClear();
@@ -472,6 +484,7 @@ function drawBird(x, y, opts = {}) {
     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(28, -37, 3, 0, 6.29); ctx.fill();
     ctx.fillStyle = '#222'; ctx.beginPath(); ctx.arc(29, -37, 1.4, 0, 6.29); ctx.fill();
     ctx.beginPath(); ctx.moveTo(31, -34); ctx.lineTo(42, -30); ctx.lineTo(31, -27); ctx.closePath(); ctx.fill();
+    if (S.dash.smart && (opts.dashing ?? true)) { ctx.fillStyle = '#111'; rr(22, -41, 12, 6, 2); ctx.fill(); ctx.fillRect(19, -39, 4, 2); ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.fillRect(24, -40, 3, 1.5); }
   } else {
     if (sk.band) { ctx.fillStyle = sk.band; ctx.fillRect(-2, -12, 18, 5); ctx.beginPath(); ctx.moveTo(-2, -10); ctx.lineTo(-16, -16); ctx.lineTo(-14, -8); ctx.closePath(); ctx.fill(); }
     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(7, -5, 5.5, 0, 6.29); ctx.fill();
@@ -672,7 +685,7 @@ function drawHUD() {
     if (S.kind === 'endless') text('best ' + save.endlessBest, W - 12, 40, 12, 'rgba(255,255,255,.8)', 'bold', 'right');
     if (S.kind === 'daily') text('best ' + (save.daily[L.dailyKey] || 0), W - 12, 40, 12, 'rgba(255,255,255,.8)', 'bold', 'right');
   }
-  drawPowerBar(20, 'FLAMINGO DASH', 'J', S.dash, T.dash.dur + T.dash.cd, '#ff6fa8', '#ffb3d4', L.powers.has('dash'));
+  drawPowerBar(20, L.smart ? 'SMART FLAMINGO' : 'FLAMINGO DASH', 'J', S.dash, L.smart ? T.smart.dur + T.smart.cd : T.dash.dur + T.dash.cd, '#ff6fa8', '#ffb3d4', L.powers.has('dash'));
   drawPowerBar(W - 210, 'GHOST', 'K', S.ghost, T.ghost.dur + T.ghost.cd, '#5fd7f0', '#bdf3ff', L.powers.has('ghost'));
   for (const p of S.popups) {
     ctx.globalAlpha = Math.min(1, p.life * 2);
@@ -720,7 +733,7 @@ function drawLevels() {
     const col = i % 4, row = Math.floor(i / 4), x = 25 + col * 110, y = 112 + row * 96, w = 100, h = 86;
     const sel = i === S.selIdx;
     let title, num, stars = -1, ok, sub = '';
-    if (i < LEVELS.length) { const lv = LEVELS[i]; title = lv.name; num = String(lv.id); stars = save.stars[lv.id] || 0; ok = i < unlocked; sub = lv.mech.map(k => MECH[k].name).join(', ') || (lv.id === 7 ? 'narrow gaps' : lv.id === 2 ? 'dash unlock' : lv.id === 3 ? 'ghost unlock' : 'basics'); }
+    if (i < LEVELS.length) { const lv = LEVELS[i]; title = lv.name; num = String(lv.id); stars = save.stars[lv.id] || 0; ok = i < unlocked; sub = lv.mech.map(k => MECH[k].name).join(', ') || (lv.id === 7 ? 'narrow gaps' : lv.id === 2 ? 'smart flamingo' : 'basics'); }
     else if (i === 14) { title = 'Endless'; num = '∞'; ok = cleared >= ENDLESS_UNLOCK; sub = ok ? 'best ' + save.endlessBest : 'clear L' + ENDLESS_UNLOCK; }
     else { title = 'Daily'; num = '☀'; ok = cleared >= DAILY_UNLOCK; sub = ok ? 'today ' + (save.daily[todayKey()] || 0) : 'clear L' + DAILY_UNLOCK; }
     ctx.fillStyle = ok ? (sel ? 'rgba(255,216,77,.28)' : 'rgba(255,255,255,.14)') : 'rgba(0,0,0,.35)'; rr(x, y, w, h, 10); ctx.fill();
@@ -747,14 +760,15 @@ function drawReady() {
   const mechs = [...L.mechs];
   let y = 240;
   if (mechs.length) { for (const k of mechs.slice(0, 5)) { plain(MECH[k].name + ' — ' + MECH[k].desc, W / 2, y, 12.5, '#dff4ff'); y += 20; } if (mechs.length > 5) { plain('+ ' + (mechs.length - 5) + ' more…', W / 2, y, 12, '#dff4ff'); y += 20; } }
-  else { plain('Clear skies. Just you and the pipes.', W / 2, y, 12.5, '#dff4ff'); y += 20; }
+  else if (!L.smart) { plain('Clear skies. Just you and the pipes.', W / 2, y, 12.5, '#dff4ff'); y += 20; }
+  if (L.smart) { plain('Smart flamingo — J dodges the pipes for you for 3 s, then a long cooldown', W / 2, y, 12.5, '#ffb3d4'); y += 20; }
   y += 14;
   if (L.goal) text('GOAL: pass ' + L.goal + ' pipes', W / 2, y, 20); else text('Fly until you drop', W / 2, y, 20);
   y += 34;
-  const pw = [...L.powers].map(p => p === 'dash' ? 'J dash' : 'K ghost').join('  +  ') || 'no powers yet';
+  const pw = [...L.powers].map(p => p === 'dash' ? (L.smart ? 'J smart flamingo' : 'J dash') : 'K ghost').join('  +  ');
   plain('powers: ' + pw, W / 2, y, 13, '#ffb3d4');
   if (S.kind === 'campaign') { const st = save.stars[L.id] || 0; plain(starStr(st), W / 2, y + 26, 20, st ? '#ffd84d' : 'rgba(255,255,255,.5)'); }
-  if (L.id === 1) { plain('SPACE / click / ↑ to flop.  Coins are ● — grab them.', W / 2, 470, 12.5, '#fff'); }
+  if (L.id === 1) { plain('SPACE / click / ↑ to flop.  J = flamingo dash (2× points).  K = ghost.', W / 2, 470, 12.5, '#fff'); }
   if (L.id === 10) { plain('In purple zones the ceiling is the floor. Flap carefully.', W / 2, 470, 12.5, '#fff'); }
   text('SPACE to fly', W / 2, 505 + Math.sin(S.t * 4) * 4, 20, 'rgba(255,255,255,' + (0.6 + Math.sin(S.t * 4) * 0.3) + ')');
   plain('ESC back', W / 2, H - 30, 12, 'rgba(255,255,255,.8)');

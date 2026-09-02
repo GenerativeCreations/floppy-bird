@@ -9,7 +9,7 @@ A Flappy-style bird game with super powers, in **one HTML file**. 14-level campa
 | Key | Action |
 | --- | --- |
 | SPACE / click / ↑ | flop |
-| **J** | Flamingo dash — 2.6× speed, flies level, double points. ↑ / ↓ steer while dashing |
+| **J** | Flamingo dash — 2.6× speed, flies level, double points. ↑ / ↓ steer while dashing. Available from level 1 |
 | **K** | Ghost — phase through pipes for 2 seconds. The ground still counts |
 | R | retry · ESC back |
 
@@ -19,9 +19,9 @@ Touch: tap to flop, two-finger tap = dash, three-finger tap = ghost.
 
 | # | Sky | Mechanic |
 | - | --- | --- |
-| 1 | Nesting Grounds | learn to flop, grab coins |
-| 2 | Flamingo Lagoon | J unlocks the dash |
-| 3 | Haunted Hollow | K unlocks the ghost · thick pipes |
+| 1 | Nesting Grounds | learn to flop, try J and K |
+| 2 | Flamingo Lagoon | **Smart Flamingo**: J makes the flamingo dodge the pipes for you for 3 s, then a 12 s cooldown |
+| 3 | Haunted Hollow | thick pipes |
 | 4 | Restless Reeds | drifting gaps |
 | 5 | Windy Peaks | gusts, with a warning |
 | 6 | Coin Canyon | coin rush |
